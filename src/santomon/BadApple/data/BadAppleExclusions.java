@@ -31,6 +31,8 @@ public class BadAppleExclusions {
         // which would skew the hyperspace bounding box if included.
         systems.add("limbo");
         systems.add("limbo_system");
+        systems.add("deep space");
+        systems.add("deep_space");
         EXEMPT_SYSTEMS = Collections.unmodifiableSet(systems);
 
         Set<String> markets = new HashSet<>();
