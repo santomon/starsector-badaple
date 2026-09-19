@@ -112,12 +112,14 @@ public class BadApplePreprocessCommand implements BaseCommand {
         }
 
         List<StarSystemAPI> validSystems = new ArrayList<>();
+        Map<StarSystemAPI, List<MarketAPI>> systemMarketsMap = new HashMap<>();
         Map<StarSystemAPI, MarketAPI> systemPrimaryMarkets = new HashMap<>();
 
         float minX = Float.MAX_VALUE;
         float maxX = -Float.MAX_VALUE;
         float minY = Float.MAX_VALUE;
         float maxY = -Float.MAX_VALUE;
+        int totalMarketCount = 0;
 
         for (StarSystemAPI system : allStarSystems) {
             if (system == null) continue;
@@ -133,24 +135,28 @@ public class BadApplePreprocessCommand implements BaseCommand {
                 continue;
             }
 
-            // Select primary market (largest or first)
+            // Collect all non-exempt markets and identify primary (largest) market
+            List<MarketAPI> nonExemptMarkets = new ArrayList<>();
             MarketAPI primaryMarket = null;
             int largestSize = -1;
             for (MarketAPI market : markets) {
                 if (market == null || BadAppleExclusions.isMarketExempt(market)) continue;
+                nonExemptMarkets.add(market);
                 if (market.getSize() > largestSize) {
                     largestSize = market.getSize();
                     primaryMarket = market;
                 }
             }
 
-            if (primaryMarket == null) continue;
+            if (nonExemptMarkets.isEmpty() || primaryMarket == null) continue;
 
             Vector2f loc = system.getLocation();
             if (loc == null) continue;
 
             validSystems.add(system);
+            systemMarketsMap.put(system, nonExemptMarkets);
             systemPrimaryMarkets.put(system, primaryMarket);
+            totalMarketCount += nonExemptMarkets.size();
 
             if (loc.x < minX) minX = loc.x;
             if (loc.x > maxX) maxX = loc.x;
@@ -163,7 +169,7 @@ public class BadApplePreprocessCommand implements BaseCommand {
             return CommandResult.ERROR;
         }
 
-        Console.showMessage("Discovered " + validSystems.size() + " systems with markets.");
+        Console.showMessage("Discovered " + validSystems.size() + " systems with " + totalMarketCount + " active markets.");
         Console.showMessage(String.format("Hyperspace Bounding Box: X:[%.1f to %.1f], Y:[%.1f to %.1f]", minX, maxX, minY, maxY));
 
         // =========================================================================
@@ -176,6 +182,7 @@ public class BadApplePreprocessCommand implements BaseCommand {
         for (StarSystemAPI system : validSystems) {
             Vector2f loc = system.getLocation();
             MarketAPI primaryMarket = systemPrimaryMarkets.get(system);
+            List<MarketAPI> markets = systemMarketsMap.get(system);
 
             // Hyperspace: +X right, +Y up
             // Image pixel: +X right, +Y down (top-left origin)
@@ -188,6 +195,7 @@ public class BadApplePreprocessCommand implements BaseCommand {
             lookupTable.add(new BadAppleMappedSystem(
                     system,
                     primaryMarket,
+                    markets,
                     loc.x,
                     loc.y,
                     px,
@@ -196,7 +204,7 @@ public class BadApplePreprocessCommand implements BaseCommand {
             ));
         }
 
-        Console.showMessage("Lookup table constructed for " + lookupTable.size() + " star systems.");
+        Console.showMessage("Lookup table constructed for " + lookupTable.size() + " star systems (" + totalMarketCount + " markets mapped).");
 
         // =========================================================================
         // --- 5. Sequential Frame Processing & Delta Extraction ---
@@ -204,9 +212,13 @@ public class BadApplePreprocessCommand implements BaseCommand {
         List<BadAppleFrameData> frameDeltas = new ArrayList<>();
         Map<String, String> lastKnownFactions = new HashMap<>();
 
-        // Initialize last known factions from the current in-game market state
+        // Initialize last known factions from the current in-game market state for all mapped markets
         for (BadAppleMappedSystem ms : lookupTable) {
-            lastKnownFactions.put(ms.primaryMarket.getId(), ms.primaryMarket.getFactionId());
+            for (MarketAPI market : ms.markets) {
+                if (market != null) {
+                    lastKnownFactions.put(market.getId(), market.getFactionId());
+                }
+            }
         }
 
         int totalChangeCount = 0;
@@ -248,17 +260,22 @@ public class BadApplePreprocessCommand implements BaseCommand {
                 // Perceived luminance (ITU-R BT.601)
                 float luminance = (0.299f * r + 0.587f * g + 0.114f * b) / 255.0f;
                 String targetFaction = (luminance >= brightnessThreshold) ? FACTION_DIKTAT : FACTION_HEGEMONY;
-                String previousFaction = lastKnownFactions.get(ms.primaryMarket.getId());
 
-                if (!targetFaction.equalsIgnoreCase(previousFaction)) {
-                    frameData.changes.add(new BadAppleMarketChange(
-                            ms.primaryMarket.getId(),
-                            ms.primaryMarket.getName(),
-                            previousFaction,
-                            targetFaction
-                    ));
-                    lastKnownFactions.put(ms.primaryMarket.getId(), targetFaction);
-                    totalChangeCount++;
+                // Apply faction flip to all non-exempt markets within the star system
+                for (MarketAPI market : ms.markets) {
+                    if (market == null) continue;
+                    String previousFaction = lastKnownFactions.get(market.getId());
+
+                    if (!targetFaction.equalsIgnoreCase(previousFaction)) {
+                        frameData.changes.add(new BadAppleMarketChange(
+                                market.getId(),
+                                market.getName(),
+                                previousFaction != null ? previousFaction : "unknown",
+                                targetFaction
+                        ));
+                        lastKnownFactions.put(market.getId(), targetFaction);
+                        totalChangeCount++;
+                    }
                 }
             }
 
