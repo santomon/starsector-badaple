@@ -28,13 +28,13 @@ import java.util.Set;
  * 2. Assigns all colonies/markets across the sector to Hegemony (or a chosen target faction).
  * 3. Excludes outlier systems (e.g. Limbo) so hyperspace coordinate bounds remain clean.
  * 4. Refreshes KMU political map layers.
- *
+ * <p>
  * Syntax:
- *   badapple_init [optionalFactionId]
+ * badapple_init [optionalFactionId]
  * Examples:
- *   badapple_init             -> Populates and sets all systems to 'hegemony'
- *   badapple_init hegemony    -> Populates and sets all systems to 'hegemony'
- *   badapple_init sindrian_diktat -> Populates and sets all systems to 'sindrian_diktat'
+ * badapple_init             -> Populates and sets all systems to 'hegemony'
+ * badapple_init hegemony    -> Populates and sets all systems to 'hegemony'
+ * badapple_init sindrian_diktat -> Populates and sets all systems to 'sindrian_diktat'
  */
 public class BadAppleInitCommand implements BaseCommand {
 
@@ -123,7 +123,8 @@ public class BadAppleInitCommand implements BaseCommand {
                         MarketPoliticsRefresh.reportMarketChange(
                                 sector, market, "faction_change", "badapple_init"
                         );
-                    } catch (Throwable ignored) {}
+                    } catch (Throwable ignored) {
+                    }
 
                     existingMarketsUpdated++;
                 }
@@ -144,7 +145,7 @@ public class BadAppleInitCommand implements BaseCommand {
                 newMarket.setPlanetConditionMarketOnly(false);
                 newMarket.setHidden(false);
                 newMarket.addCondition(Conditions.POPULATION_3);
-                newMarket.addCondition(Conditions.SPACEPORT);
+//                newMarket.addCondition(Conditions.SPACEPORT);
 
                 station.setMarket(newMarket);
                 station.setFaction(targetFactionId);
@@ -155,7 +156,8 @@ public class BadAppleInitCommand implements BaseCommand {
                     MarketPoliticsRefresh.reportMarketChange(
                             sector, newMarket, "market_spawned", "badapple_init"
                     );
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
 
                 newStationsSpawned++;
             }
@@ -186,7 +188,8 @@ public class BadAppleInitCommand implements BaseCommand {
                     MarketPoliticsRefresh.reportMarketChange(
                             sector, market, "faction_change", "badapple_init"
                     );
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
             }
         }
 
@@ -201,7 +204,8 @@ public class BadAppleInitCommand implements BaseCommand {
                     board.requestRefresh(MapLayerCommonRefreshSignal.GEOMETRY);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
 
         // =========================================================================
         // --- 5. Summary & Diagnostics ---
