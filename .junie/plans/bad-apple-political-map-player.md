@@ -141,3 +141,11 @@ Implement `badapple_poc` for alternating single-colony faction flips and `badapp
 - Implement `BadAppleIndepCommand` to bulk-set all sector markets, primary entities, and connected entities to `independent`, notifying KMU.
 - Implement `BadApplePocScript` and `BadApplePocCommand` to alternate Chicomoztoc's faction between `hegemony` and `sindrian_diktat` at a configurable interval (default 1.0s).
 - Register `badapple_poc` and `badapple_indep` in `data/console/commands.csv`.
+
+### ✓ Step 5: Implement sector initialization command and exclusion filter
+Replace `badapple_indep` with `badapple_init` to populate markets across all sector star systems, assign them to Hegemony (or a chosen faction), and filter out exempt outlier systems like Limbo from both initialization and frame preprocessing.
+
+- Create `BadAppleExclusions` with a hardcoded list of exempt system and market identifiers (including "limbo").
+- Implement `BadAppleInitCommand` to spawn markets in systems without them and assign all non-exempt markets to Hegemony (or target faction), notifying KMU.
+- Update `BadApplePreprocessCommand` to respect `BadAppleExclusions` so outlier systems do not distort the hyperspace bounding box.
+- Update `data/console/commands.csv` to replace `badapple_indep` with `badapple_init`.

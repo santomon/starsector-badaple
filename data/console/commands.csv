@@ -1,5 +1,5 @@
 command,class,tags,syntax,help
 badapple_prep,santomon.BadApple.commands.BadApplePreprocessCommand,"badapple,campaign",badapple_prep [maxFrames] [algorithm] [threshold],"Preprocesses Bad Apple video frames and calculates market changes across sector star systems."
 badapple_play,santomon.BadApple.commands.BadApplePlayCommand,"badapple,campaign",badapple_play [delaySeconds|stop|pause|resume|reset] [startFrame],"Plays or controls Bad Apple video playback on the campaign map. Default playback rate is 0.5 frames/sec (2.0s delay)."
-badapple_indep,santomon.BadApple.commands.BadAppleIndepCommand,"badapple,campaign",badapple_indep [optionalFactionId],"Assigns all sector colonies and markets to the independent faction (or specified faction) to prepare the map."
+badapple_init,santomon.BadApple.commands.BadAppleInitCommand,"badapple,campaign",badapple_init [optionalFactionId],"Initializes the sector for Bad Apple by populating all star systems with markets and setting all markets to Hegemony (or specified faction), excluding exempt systems like Limbo."
 badapple_poc,santomon.BadApple.commands.BadApplePocCommand,"badapple,campaign",badapple_poc [optionalIntervalSeconds|stop|pause|resume|status],"Proof of concept: continuously alternates Chicomoztoc's faction between Hegemony and Sindrian Diktat every second."

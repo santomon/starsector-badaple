@@ -7,6 +7,7 @@ import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import org.lazywizard.console.BaseCommand;
 import org.lazywizard.console.Console;
 import org.lwjgl.util.vector.Vector2f;
+import santomon.BadApple.data.BadAppleExclusions;
 import santomon.BadApple.data.BadAppleFrameData;
 import santomon.BadApple.data.BadAppleMappedSystem;
 import santomon.BadApple.data.BadAppleMarketChange;
@@ -108,6 +109,11 @@ public class BadApplePreprocessCommand implements BaseCommand {
         for (StarSystemAPI system : allStarSystems) {
             if (system == null) continue;
 
+            // Skip exempt systems (e.g. Limbo)
+            if (BadAppleExclusions.isSystemExempt(system)) {
+                continue;
+            }
+
             // Find markets in system
             List<MarketAPI> markets = Global.getSector().getEconomy().getMarkets(system);
             if (markets == null || markets.isEmpty()) {
@@ -118,7 +124,7 @@ public class BadApplePreprocessCommand implements BaseCommand {
             MarketAPI primaryMarket = null;
             int largestSize = -1;
             for (MarketAPI market : markets) {
-                if (market == null) continue;
+                if (market == null || BadAppleExclusions.isMarketExempt(market)) continue;
                 if (market.getSize() > largestSize) {
                     largestSize = market.getSize();
                     primaryMarket = market;
