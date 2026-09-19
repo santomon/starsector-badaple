@@ -4,12 +4,12 @@ import com.fs.starfarer.api.EveryFrameScript;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.SectorAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
+import kmu.maplayers.politicalmap.base.refresh.MarketPoliticsRefresh;
 import org.lazywizard.console.Console;
 import santomon.BadApple.data.BadAppleFrameData;
 import santomon.BadApple.data.BadAppleMarketChange;
 import santomon.BadApple.data.BadAppleSession;
 
-import java.lang.reflect.Method;
 import java.util.List;
 
 /**
@@ -101,17 +101,10 @@ public class BadApplePlaybackScript implements EveryFrameScript {
      */
     private void notifyKMURefresh(SectorAPI sector, MarketAPI market, String oldFaction, String newFaction) {
         try {
-            // Direct call if KMU is present on the classpath
-            kmu.maplayers.politicalmap.base.refresh.MarketPoliticsRefresh.reportMarketChange(
+            MarketPoliticsRefresh.reportMarketChange(
                     sector, market, "faction_change", "badapple"
             );
-        } catch (Throwable t) {
-            // Fallback via reflection if needed
-            try {
-                Class<?> refreshClass = Class.forName("kmu.maplayers.politicalmap.base.refresh.MarketPoliticsRefresh");
-                Method method = refreshClass.getMethod("reportMarketChange", SectorAPI.class, MarketAPI.class, String.class, String.class);
-                method.invoke(null, sector, market, "faction_change", "badapple");
-            } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
         }
     }
 

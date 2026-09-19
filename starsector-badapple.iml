@@ -8,8 +8,26 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="starfarer.api" level="project" />
-    <orderEntry type="library" name="KMU" level="project" />
-    <orderEntry type="library" name="Console Commands-4.0" level="project" />
+    <orderEntry type="library" exported="" name="starfarer.api" level="project" />
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="file://$MODULE_DIR$/../Klark Morrigan's Utilities-0.1.2/jars" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+        <jarDirectory url="file://$MODULE_DIR$/../Klark Morrigan's Utilities-0.1.2/jars" recursive="false" />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library" exported="">
+      <library>
+        <CLASSES>
+          <root url="file://$MODULE_DIR$/../Console Commands-4.0.9/jars" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+        <jarDirectory url="file://$MODULE_DIR$/../Console Commands-4.0.9/jars" recursive="false" />
+      </library>
+    </orderEntry>
   </component>
 </module>
