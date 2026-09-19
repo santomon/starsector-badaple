@@ -3,7 +3,12 @@ package santomon.BadApple.playback;
 import com.fs.starfarer.api.EveryFrameScript;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.SectorAPI;
+import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
+import kmu.maplayers.base.machinery.SectorMapMachinery;
+import kmu.maplayers.base.machinery.SectorMapMachineryIndex;
+import kmu.maplayers.base.refresh.MapLayerCommonRefreshSignal;
+import kmu.maplayers.base.refresh.MapLayerRefreshBoard;
 import kmu.maplayers.politicalmap.base.refresh.MarketPoliticsRefresh;
 import org.lazywizard.console.Console;
 import santomon.BadApple.data.BadAppleFrameData;
@@ -80,6 +85,19 @@ public class BadApplePlaybackScript implements EveryFrameScript {
                     MarketAPI market = sector.getEconomy().getMarket(change.marketId);
                     if (market != null) {
                         market.setFactionId(change.newFactionId);
+
+                        // Update physical entities attached to market
+                        if (market.getPrimaryEntity() != null) {
+                            market.getPrimaryEntity().setFaction(change.newFactionId);
+                        }
+                        if (market.getConnectedEntities() != null) {
+                            for (SectorEntityToken entity : market.getConnectedEntities()) {
+                                if (entity != null) {
+                                    entity.setFaction(change.newFactionId);
+                                }
+                            }
+                        }
+
                         notifyKMURefresh(sector, market, change.previousFactionId, change.newFactionId);
                     }
                 }
@@ -104,6 +122,16 @@ public class BadApplePlaybackScript implements EveryFrameScript {
             MarketPoliticsRefresh.reportMarketChange(
                     sector, market, "faction_change", "badapple"
             );
+        } catch (Throwable ignored) {
+        }
+        try {
+            SectorMapMachinery machinery = SectorMapMachineryIndex.resolveMachineryFor(sector);
+            if (machinery != null) {
+                MapLayerRefreshBoard board = machinery.resolveRefreshBoard();
+                if (board != null) {
+                    board.requestRefresh(MapLayerCommonRefreshSignal.GEOMETRY);
+                }
+            }
         } catch (Throwable ignored) {
         }
     }

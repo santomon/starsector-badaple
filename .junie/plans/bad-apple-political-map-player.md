@@ -134,3 +134,10 @@ The playback command consumes preprocessed frame changes at a configurable pace,
 - Block 1 (State application): On each frame tick, retrieve the current frame's market changes and apply `market.setFactionId(newFactionId)` to the target colonies.
 - Block 2 (KMU political map refresh): Call `MarketPoliticsRefresh.reportMarketChange(...)` and signal KMU's `MapLayerRefreshBoard` (`MapLayerCommonRefreshSignal.GEOMETRY`) to redraw political spheres.
 - Block 3 (Diagnostics & feedback): Log playback progress to console / screen overlay to facilitate footage capture in external screen recording software.
+
+### ✓ Step 4: Implement proof-of-concept Chicomoztoc flip command and market reset command
+Implement `badapple_poc` for alternating single-colony faction flips and `badapple_indep` for resetting all markets to independent.
+
+- Implement `BadAppleIndepCommand` to bulk-set all sector markets, primary entities, and connected entities to `independent`, notifying KMU.
+- Implement `BadApplePocScript` and `BadApplePocCommand` to alternate Chicomoztoc's faction between `hegemony` and `sindrian_diktat` at a configurable interval (default 1.0s).
+- Register `badapple_poc` and `badapple_indep` in `data/console/commands.csv`.
