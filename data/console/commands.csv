@@ -1,0 +1,3 @@
+command,class,tags,syntax,help
+badapple_prep,santomon.BadApple.commands.BadApplePreprocessCommand,"badapple,campaign",badapple_prep [maxFrames] [algorithm] [threshold],"Preprocesses Bad Apple video frames and calculates market changes across sector star systems."
+badapple_play,santomon.BadApple.commands.BadApplePlayCommand,"badapple,campaign",badapple_play [delaySeconds|stop|pause|resume|reset] [startFrame],"Plays or controls Bad Apple video playback on the campaign map. Default playback rate is 0.5 frames/sec (2.0s delay)."
