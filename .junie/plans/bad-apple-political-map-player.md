@@ -149,3 +149,10 @@ Replace `badapple_indep` with `badapple_init` to populate markets across all sec
 - Implement `BadAppleInitCommand` to spawn markets in systems without them and assign all non-exempt markets to Hegemony (or target faction), notifying KMU.
 - Update `BadApplePreprocessCommand` to respect `BadAppleExclusions` so outlier systems do not distort the hyperspace bounding box.
 - Update `data/console/commands.csv` to replace `badapple_indep` with `badapple_init`.
+
+### ✓ Step 6: Spawn dedicated space station entities for uninhabited star systems
+Spawn physical space station custom entities (`station_lowtech1`) in systems lacking existing markets to serve as physical hosts and anchor points for newly initialized markets.
+
+- Update `BadAppleInitCommand` to spawn orbital station custom entities (`station_lowtech1`) orbiting planets, stars, or system centers in uninhabited systems.
+- Attach the newly spawned size-3 markets and condition specs directly to the station entities.
+- Recompile project classes and update mod JAR.

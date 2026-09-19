@@ -1,6 +1,7 @@
 package santomon.BadApple.commands;
 
 import com.fs.starfarer.api.Global;
+import com.fs.starfarer.api.campaign.CustomCampaignEntityAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
 import com.fs.starfarer.api.campaign.SectorAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
@@ -23,7 +24,7 @@ import java.util.Set;
 
 /**
  * Console command to initialize all star systems in the sector for Bad Apple playback:
- * 1. Spawns size-3 colony markets in any uninhabited star systems.
+ * 1. Spawns physical space station entities and size-3 colony markets in uninhabited star systems.
  * 2. Assigns all colonies/markets across the sector to Hegemony (or a chosen target faction).
  * 3. Excludes outlier systems (e.g. Limbo) so hyperspace coordinate bounds remain clean.
  * 4. Refreshes KMU political map layers.
@@ -38,6 +39,7 @@ import java.util.Set;
 public class BadAppleInitCommand implements BaseCommand {
 
     public static final String DEFAULT_FACTION_ID = Factions.HEGEMONY; // "hegemony"
+    public static final String STATION_ENTITY_TYPE = "station_lowtech1";
 
     @Override
     public CommandResult runCommand(String args, CommandContext context) {
@@ -69,7 +71,7 @@ public class BadAppleInitCommand implements BaseCommand {
         Console.showMessage("=== Initializing Sector for Bad Apple (Target Faction: " + targetFactionId + ") ===");
 
         // =========================================================================
-        // --- 2. System Traversal, Market Spawning & Faction Assignment ---
+        // --- 2. System Traversal, Station/Market Spawning & Faction Assignment ---
         // =========================================================================
         List<StarSystemAPI> allStarSystems = sector.getStarSystems();
         if (allStarSystems == null || allStarSystems.isEmpty()) {
@@ -80,7 +82,7 @@ public class BadAppleInitCommand implements BaseCommand {
         int totalSystemsVisited = 0;
         int exemptSystemsSkipped = 0;
         int existingMarketsUpdated = 0;
-        int newMarketsSpawned = 0;
+        int newStationsSpawned = 0;
         Set<String> processedSystemNames = new HashSet<>();
 
         for (StarSystemAPI system : allStarSystems) {
@@ -126,25 +128,26 @@ public class BadAppleInitCommand implements BaseCommand {
                     existingMarketsUpdated++;
                 }
             } else {
-                // System is uninhabited: spawn a new dummy colony market
-                SectorEntityToken primaryEntity = findOrCreatePrimaryEntity(system);
+                // System is uninhabited: spawn a dedicated space station and colony market
+                SectorEntityToken station = spawnStationEntity(system, targetFactionId);
 
                 String systemBaseName = (system.getBaseName() != null && !system.getBaseName().trim().isEmpty())
                         ? system.getBaseName()
                         : system.getName();
                 String marketId = "badapple_mkt_" + system.getId();
 
-                MarketAPI newMarket = Global.getFactory().createMarket(marketId, systemBaseName, 3);
+                MarketAPI newMarket = Global.getFactory().createMarket(marketId, systemBaseName + " Station", 3);
                 newMarket.setFactionId(targetFactionId);
-                newMarket.setPrimaryEntity(primaryEntity);
+                newMarket.setPrimaryEntity(station);
                 newMarket.getStability().modifyFlat("base", 10.0f);
                 newMarket.setSurveyLevel(MarketAPI.SurveyLevel.FULL);
                 newMarket.setPlanetConditionMarketOnly(false);
                 newMarket.setHidden(false);
                 newMarket.addCondition(Conditions.POPULATION_3);
+                newMarket.addCondition(Conditions.SPACEPORT);
 
-                primaryEntity.setMarket(newMarket);
-                primaryEntity.setFaction(targetFactionId);
+                station.setMarket(newMarket);
+                station.setFaction(targetFactionId);
 
                 sector.getEconomy().addMarket(newMarket, false);
 
@@ -154,7 +157,7 @@ public class BadAppleInitCommand implements BaseCommand {
                     );
                 } catch (Throwable ignored) {}
 
-                newMarketsSpawned++;
+                newStationsSpawned++;
             }
 
             processedSystemNames.add(system.getBaseName() != null ? system.getBaseName() : system.getName());
@@ -205,7 +208,7 @@ public class BadAppleInitCommand implements BaseCommand {
         // =========================================================================
         Console.showMessage(String.format("Initialization complete: %d systems initialized across the sector.", processedSystemNames.size()));
         Console.showMessage(String.format("  - Existing markets updated: %d", existingMarketsUpdated));
-        Console.showMessage(String.format("  - New markets spawned:      %d", newMarketsSpawned));
+        Console.showMessage(String.format("  - Space stations spawned:   %d", newStationsSpawned));
         Console.showMessage(String.format("  - Outlier systems exempt:   %d", exemptSystemsSkipped));
         Console.showMessage("  - Target faction:           " + targetFactionId);
         Console.showMessage("KMU political spheres refreshed. Open campaign map (TAB) to inspect.");
@@ -214,38 +217,51 @@ public class BadAppleInitCommand implements BaseCommand {
     }
 
     /**
-     * Resolves an appropriate SectorEntityToken inside a star system to host a newly spawned market.
-     * Prefers non-star planets, falls back to the system star, center entity, or a spatial token.
+     * Creates and orbits a dedicated space station custom entity in the star system to host the new colony market.
      */
-    private SectorEntityToken findOrCreatePrimaryEntity(StarSystemAPI system) {
-        // 1. Check for solid non-star planets
+    private SectorEntityToken spawnStationEntity(StarSystemAPI system, String targetFactionId) {
+        String systemBaseName = (system.getBaseName() != null && !system.getBaseName().trim().isEmpty())
+                ? system.getBaseName()
+                : system.getName();
+        String stationId = "badapple_station_" + system.getId();
+        String stationName = systemBaseName + " Station";
+
+        // If a station entity with this ID was already spawned previously, reuse it
+        SectorEntityToken existing = system.getEntityById(stationId);
+        if (existing != null) {
+            existing.setFaction(targetFactionId);
+            return existing;
+        }
+
+        // Spawn a space station custom entity
+        CustomCampaignEntityAPI station = system.addCustomEntity(
+                stationId,
+                stationName,
+                STATION_ENTITY_TYPE,
+                targetFactionId
+        );
+
+        // Find best celestial body to orbit
+        PlanetAPI orbitPlanet = null;
         if (system.getPlanets() != null) {
             for (PlanetAPI planet : system.getPlanets()) {
                 if (planet != null && !planet.isStar()) {
-                    return planet;
+                    orbitPlanet = planet;
+                    break;
                 }
             }
         }
 
-        // 2. Check for the central system star
-        if (system.getStar() != null) {
-            return system.getStar();
+        if (orbitPlanet != null) {
+            station.setCircularOrbitPointingDown(orbitPlanet, 45f, orbitPlanet.getRadius() + 150f, 30f);
+        } else if (system.getStar() != null) {
+            station.setCircularOrbitWithSpin(system.getStar(), 45f, system.getStar().getRadius() + 1200f, 150f, 5f, 10f);
+        } else if (system.getCenter() != null) {
+            station.setCircularOrbitWithSpin(system.getCenter(), 45f, 1000f, 150f, 5f, 10f);
+        } else {
+            station.setFixedLocation(0f, 0f);
         }
 
-        // 3. Check for any planet in the system
-        if (system.getPlanets() != null && !system.getPlanets().isEmpty()) {
-            PlanetAPI firstPlanet = system.getPlanets().get(0);
-            if (firstPlanet != null) {
-                return firstPlanet;
-            }
-        }
-
-        // 4. Check for system center token
-        if (system.getCenter() != null) {
-            return system.getCenter();
-        }
-
-        // 5. Fallback: create spatial anchor token at origin
-        return system.createToken(0f, 0f);
+        return station;
     }
 }
