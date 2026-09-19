@@ -79,6 +79,7 @@ public class BadApplePlaybackScript implements EveryFrameScript {
 
             // --- 1. Apply Frame Market Changes ---
             BadAppleFrameData frameData = session.frameDeltas.get(currentFrameIndex);
+            int changesCount = 0;
             if (frameData != null && frameData.changes != null && !frameData.changes.isEmpty()) {
                 SectorAPI sector = Global.getSector();
                 for (BadAppleMarketChange change : frameData.changes) {
@@ -98,41 +99,43 @@ public class BadApplePlaybackScript implements EveryFrameScript {
                             }
                         }
 
-                        notifyKMURefresh(sector, market, change.previousFactionId, change.newFactionId);
+                        // Report to KMU market listener
+                        try {
+                            MarketPoliticsRefresh.reportMarketChange(
+                                    sector, market, "faction_change", "badapple"
+                            );
+                        } catch (Throwable ignored) {}
+
+                        changesCount++;
                     }
                 }
+
+                // Batch trigger KMU geometry recalculation once for all modified markets in this frame
+                try {
+                    SectorMapMachinery machinery = SectorMapMachineryIndex.resolveMachineryFor(sector);
+                    if (machinery != null) {
+                        MapLayerRefreshBoard board = machinery.resolveRefreshBoard();
+                        if (board != null) {
+                            board.requestRefresh(MapLayerCommonRefreshSignal.GEOMETRY);
+                        }
+                    }
+                } catch (Throwable ignored) {}
             }
 
             // --- 2. Diagnostics & Console Status ---
-            if (currentFrameIndex % 50 == 0 || currentFrameIndex == session.frameDeltas.size() - 1) {
-                int total = session.frameDeltas.size();
+            int total = session.frameDeltas.size();
+            if (currentFrameIndex == 0 || changesCount > 0 || currentFrameIndex % 25 == 0 || currentFrameIndex == total - 1) {
                 float progress = (float) (currentFrameIndex + 1) / total * 100.0f;
-                Console.showMessage(String.format("[BadApple] Frame %d / %d (%.1f%%)", currentFrameIndex + 1, total, progress));
+                if (changesCount > 0) {
+                    Console.showMessage(String.format("[BadApple] Frame %d / %d (%.1f%%) - %d market updates applied",
+                            currentFrameIndex + 1, total, progress, changesCount));
+                } else {
+                    Console.showMessage(String.format("[BadApple] Frame %d / %d (%.1f%%) [stepping]",
+                            currentFrameIndex + 1, total, progress));
+                }
             }
 
             currentFrameIndex++;
-        }
-    }
-
-    /**
-     * Notifies KMU's political map layer about the market faction change to trigger border recalculation.
-     */
-    private void notifyKMURefresh(SectorAPI sector, MarketAPI market, String oldFaction, String newFaction) {
-        try {
-            MarketPoliticsRefresh.reportMarketChange(
-                    sector, market, "faction_change", "badapple"
-            );
-        } catch (Throwable ignored) {
-        }
-        try {
-            SectorMapMachinery machinery = SectorMapMachineryIndex.resolveMachineryFor(sector);
-            if (machinery != null) {
-                MapLayerRefreshBoard board = machinery.resolveRefreshBoard();
-                if (board != null) {
-                    board.requestRefresh(MapLayerCommonRefreshSignal.GEOMETRY);
-                }
-            }
-        } catch (Throwable ignored) {
         }
     }
 

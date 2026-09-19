@@ -1,7 +1,6 @@
 package santomon.BadApple.commands;
 
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.campaign.LocationAPI;
 import com.fs.starfarer.api.campaign.StarSystemAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import org.lazywizard.console.BaseCommand;
@@ -12,8 +11,6 @@ import santomon.BadApple.data.BadAppleFrameData;
 import santomon.BadApple.data.BadAppleMappedSystem;
 import santomon.BadApple.data.BadAppleMarketChange;
 import santomon.BadApple.data.BadAppleSession;
-import santomon.BadApple.sampling.PixelSamplingAlgorithm;
-import santomon.BadApple.sampling.SamplingAlgorithms;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -24,12 +21,19 @@ import java.util.*;
 /**
  * Console command to preprocess Bad Apple video frames and sector star systems into market delta changes.
  *
+ * Direct Lookup Table Workflow:
+ * 1. Discover frame dimensions from the first video frame (output_0001.jpg).
+ * 2. Fetch sector star systems with active markets (excluding outlier systems like Limbo) and compute the hyperspace bounding box.
+ * 3. Map each system to a static integer pixel coordinate (pixelX, pixelY) in the lookup table.
+ * 4. Sequentially iterate through frame images, sample pixels directly at lookup coordinates, and record market faction deltas.
+ * 5. Cache preprocessed delta sequences in memory for instant playback via badapple_play.
+ *
  * Syntax:
- *   badapple_prep [maxFrames] [algorithm] [brightnessThreshold]
+ *   badapple_prep [maxFrames] [brightnessThreshold]
  * Examples:
  *   badapple_prep
- *   badapple_prep 200 area 0.5
- *   badapple_prep 6572 adaptive 0.45
+ *   badapple_prep 200
+ *   badapple_prep 6572 0.5
  */
 public class BadApplePreprocessCommand implements BaseCommand {
 
@@ -49,7 +53,6 @@ public class BadApplePreprocessCommand implements BaseCommand {
         // --- 1. Argument Parsing & Validation ---
         // =========================================================================
         int maxFrames = Integer.MAX_VALUE;
-        String algorithmName = "point";
         float brightnessThreshold = 0.5f;
 
         if (args != null && !args.trim().isEmpty()) {
@@ -58,39 +61,49 @@ public class BadApplePreprocessCommand implements BaseCommand {
                 try {
                     maxFrames = Integer.parseInt(tokens[0]);
                     if (maxFrames <= 0) maxFrames = Integer.MAX_VALUE;
-                } catch (NumberFormatException e) {
-                    // Token might be algorithm name if first argument was omitted as a number
-                    if (SamplingAlgorithms.getAvailableIds().contains(tokens[0].toLowerCase())) {
-                        algorithmName = tokens[0].toLowerCase();
-                    }
-                }
+                } catch (NumberFormatException ignored) {}
             }
             if (tokens.length >= 2) {
-                if (SamplingAlgorithms.getAvailableIds().contains(tokens[1].toLowerCase())) {
-                    algorithmName = tokens[1].toLowerCase();
-                } else {
-                    try {
-                        brightnessThreshold = Float.parseFloat(tokens[1]);
-                    } catch (NumberFormatException ignored) {}
-                }
-            }
-            if (tokens.length >= 3) {
                 try {
-                    brightnessThreshold = Float.parseFloat(tokens[2]);
+                    brightnessThreshold = Float.parseFloat(tokens[1]);
                 } catch (NumberFormatException ignored) {}
             }
         }
 
         brightnessThreshold = Math.max(0.0f, Math.min(1.0f, brightnessThreshold));
-        PixelSamplingAlgorithm samplingAlgorithm = SamplingAlgorithms.get(algorithmName);
 
         Console.showMessage("=== Bad Apple Preprocessing Started ===");
-        Console.showMessage("Algorithm: " + samplingAlgorithm.getId() + " (" + samplingAlgorithm.getDescription() + ")");
         Console.showMessage("Brightness Threshold: " + brightnessThreshold);
         Console.showMessage("Max Frames requested: " + (maxFrames == Integer.MAX_VALUE ? "ALL" : maxFrames));
 
         // =========================================================================
-        // --- 2. System Discovery & Bounding Box Calculation ---
+        // --- 2. Frame Dimension Discovery (Fetch First Frame) ---
+        // =========================================================================
+        String frameFormat = "graphics/badapple/frames/output_%04d.jpg";
+        int frameWidth = -1;
+        int frameHeight = -1;
+
+        try (InputStream is = Global.getSettings().openStream(String.format(frameFormat, 1))) {
+            if (is != null) {
+                BufferedImage firstFrame = ImageIO.read(new BufferedInputStream(is));
+                if (firstFrame != null) {
+                    frameWidth = firstFrame.getWidth();
+                    frameHeight = firstFrame.getHeight();
+                }
+            }
+        } catch (Exception e) {
+            Console.showMessage("Warning: Could not read first frame: " + e.getMessage());
+        }
+
+        if (frameWidth <= 0 || frameHeight <= 0) {
+            Console.showMessage("Error: Bad Apple frame images not accessible at graphics/badapple/frames/output_0001.jpg");
+            return CommandResult.ERROR;
+        }
+
+        Console.showMessage("Frame Resolution: " + frameWidth + " x " + frameHeight);
+
+        // =========================================================================
+        // --- 3. System Discovery & Bounding Box Calculation ---
         // =========================================================================
         List<StarSystemAPI> allStarSystems = Global.getSector().getStarSystems();
         if (allStarSystems == null || allStarSystems.isEmpty()) {
@@ -154,38 +167,9 @@ public class BadApplePreprocessCommand implements BaseCommand {
         Console.showMessage(String.format("Hyperspace Bounding Box: X:[%.1f to %.1f], Y:[%.1f to %.1f]", minX, maxX, minY, maxY));
 
         // =========================================================================
-        // --- 3. Frame Image Loading & Resolution Discovery ---
+        // --- 4. Build System-to-Pixel Lookup Table ---
         // =========================================================================
-        String frameFormat = "graphics/badapple/frames/output_%04d.jpg";
-        int frameCountToProcess = 0;
-        int frameWidth = -1;
-        int frameHeight = -1;
-
-        // Verify first frame and determine frame resolution
-        try (InputStream is = Global.getSettings().openStream(String.format(frameFormat, 1))) {
-            if (is != null) {
-                BufferedImage firstFrame = ImageIO.read(new BufferedInputStream(is));
-                if (firstFrame != null) {
-                    frameWidth = firstFrame.getWidth();
-                    frameHeight = firstFrame.getHeight();
-                }
-            }
-        } catch (Exception e) {
-            Console.showMessage("Warning: Could not read first frame via primary path: " + e.getMessage());
-        }
-
-        // Fallback check if frame format uses unpadded or alternative extension
-        if (frameWidth <= 0 || frameHeight <= 0) {
-            Console.showMessage("Error: Bad Apple frame images not accessible at graphics/badapple/frames/output_0001.jpg");
-            return CommandResult.ERROR;
-        }
-
-        Console.showMessage("Frame resolution: " + frameWidth + " x " + frameHeight);
-
-        // =========================================================================
-        // --- 4. Coordinate Normalization (Hyperspace -> Pixel Space) ---
-        // =========================================================================
-        List<BadAppleMappedSystem> mappedSystems = new ArrayList<>();
+        List<BadAppleMappedSystem> lookupTable = new ArrayList<>(validSystems.size());
         float rangeX = (maxX > minX) ? (maxX - minX) : 1.0f;
         float rangeY = (maxY > minY) ? (maxY - minY) : 1.0f;
 
@@ -193,15 +177,15 @@ public class BadApplePreprocessCommand implements BaseCommand {
             Vector2f loc = system.getLocation();
             MarketAPI primaryMarket = systemPrimaryMarkets.get(system);
 
-            // Hyperspace coordinate: +X is right, +Y is up
-            // Image pixel coordinate: +X is right, +Y is down
+            // Hyperspace: +X right, +Y up
+            // Image pixel: +X right, +Y down (top-left origin)
             float normX = (loc.x - minX) / rangeX;
-            float normY = (maxY - loc.y) / rangeY; // Invert Y for image top-down indexing
+            float normY = (maxY - loc.y) / rangeY;
 
             int px = Math.max(0, Math.min(frameWidth - 1, Math.round(normX * (frameWidth - 1))));
             int py = Math.max(0, Math.min(frameHeight - 1, Math.round(normY * (frameHeight - 1))));
 
-            mappedSystems.add(new BadAppleMappedSystem(
+            lookupTable.add(new BadAppleMappedSystem(
                     system,
                     primaryMarket,
                     loc.x,
@@ -212,22 +196,26 @@ public class BadApplePreprocessCommand implements BaseCommand {
             ));
         }
 
+        Console.showMessage("Lookup table constructed for " + lookupTable.size() + " star systems.");
+
         // =========================================================================
-        // --- 5. Frame Sampling & Delta Extraction ---
+        // --- 5. Sequential Frame Processing & Delta Extraction ---
         // =========================================================================
         List<BadAppleFrameData> frameDeltas = new ArrayList<>();
         Map<String, String> lastKnownFactions = new HashMap<>();
 
-        // Initialize last known factions with the initial state
-        for (BadAppleMappedSystem ms : mappedSystems) {
+        // Initialize last known factions from the current in-game market state
+        for (BadAppleMappedSystem ms : lookupTable) {
             lastKnownFactions.put(ms.primaryMarket.getId(), ms.primaryMarket.getFactionId());
         }
 
         int totalChangeCount = 0;
+        int activeFramesCount = 0;
+        int frameCountToProcess = 0;
         int frameIndex = 0;
         int consecutiveFailures = 0;
 
-        Console.showMessage("Sampling frames sequentially...");
+        Console.showMessage("Sampling video frames via lookup table...");
 
         while (frameIndex < maxFrames && consecutiveFailures < 5) {
             int frameNum = frameIndex + 1;
@@ -250,11 +238,19 @@ public class BadApplePreprocessCommand implements BaseCommand {
             String frameFileName = String.format("output_%04d.jpg", frameNum);
             BadAppleFrameData frameData = new BadAppleFrameData(frameIndex, frameFileName);
 
-            for (BadAppleMappedSystem ms : mappedSystems) {
-                String targetFaction = samplingAlgorithm.determineFaction(image, ms, mappedSystems, brightnessThreshold);
+            for (BadAppleMappedSystem ms : lookupTable) {
+                // Direct lookup pixel sampling
+                int rgb = image.getRGB(ms.pixelX, ms.pixelY);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+
+                // Perceived luminance (ITU-R BT.601)
+                float luminance = (0.299f * r + 0.587f * g + 0.114f * b) / 255.0f;
+                String targetFaction = (luminance >= brightnessThreshold) ? FACTION_DIKTAT : FACTION_HEGEMONY;
                 String previousFaction = lastKnownFactions.get(ms.primaryMarket.getId());
 
-                if (frameIndex == 0 || !targetFaction.equals(previousFaction)) {
+                if (!targetFaction.equalsIgnoreCase(previousFaction)) {
                     frameData.changes.add(new BadAppleMarketChange(
                             ms.primaryMarket.getId(),
                             ms.primaryMarket.getName(),
@@ -264,6 +260,10 @@ public class BadApplePreprocessCommand implements BaseCommand {
                     lastKnownFactions.put(ms.primaryMarket.getId(), targetFaction);
                     totalChangeCount++;
                 }
+            }
+
+            if (!frameData.changes.isEmpty()) {
+                activeFramesCount++;
             }
 
             frameDeltas.add(frameData);
@@ -276,7 +276,7 @@ public class BadApplePreprocessCommand implements BaseCommand {
         // =========================================================================
         BadAppleSession session = new BadAppleSession();
         session.frameDeltas = frameDeltas;
-        session.mappedSystems = mappedSystems;
+        session.mappedSystems = lookupTable;
         session.totalFramesProcessed = frameCountToProcess;
         session.totalChanges = totalChangeCount;
         session.minHyperspaceX = minX;
@@ -285,17 +285,19 @@ public class BadApplePreprocessCommand implements BaseCommand {
         session.maxHyperspaceY = maxY;
         session.frameWidth = frameWidth;
         session.frameHeight = frameHeight;
-        session.algorithmName = samplingAlgorithm.getId();
+        session.algorithmName = "direct_lookup";
         session.brightnessThreshold = brightnessThreshold;
         session.preprocessDurationMs = System.currentTimeMillis() - startTimeMs;
 
         BadAppleSession.INSTANCE = session;
 
         Console.showMessage("=== Bad Apple Preprocessing Complete ===");
-        Console.showMessage(String.format("Successfully preprocessed %d frames with %d total market updates (%.2f changes/frame).",
-                session.totalFramesProcessed, session.totalChanges, (float) session.totalChanges / Math.max(1, session.totalFramesProcessed)));
-        Console.showMessage("Elapsed Time: " + session.preprocessDurationMs + " ms.");
-        Console.showMessage("Ready for playback! Run 'badapple_play' to start.");
+        Console.showMessage(String.format("Processed %d frames in %d ms (Avg %.2f ms/frame).",
+                session.totalFramesProcessed, session.preprocessDurationMs,
+                (float) session.preprocessDurationMs / Math.max(1, session.totalFramesProcessed)));
+        Console.showMessage(String.format("Total Market Flips: %d across %d active delta frames.",
+                session.totalChanges, activeFramesCount));
+        Console.showMessage("Ready for playback! Run 'badapple_play [delaySeconds] [startFrame]' to start.");
 
         return CommandResult.SUCCESS;
     }
