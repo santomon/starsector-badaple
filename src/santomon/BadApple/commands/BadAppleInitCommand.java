@@ -2,6 +2,7 @@ package santomon.BadApple.commands;
 
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.CustomCampaignEntityAPI;
+import com.fs.starfarer.api.campaign.JumpPointAPI;
 import com.fs.starfarer.api.campaign.PlanetAPI;
 import com.fs.starfarer.api.campaign.SectorAPI;
 import com.fs.starfarer.api.campaign.SectorEntityToken;
@@ -9,6 +10,7 @@ import com.fs.starfarer.api.campaign.StarSystemAPI;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.impl.campaign.ids.Conditions;
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
+import com.fs.starfarer.api.util.Misc;
 import kmu.maplayers.base.machinery.SectorMapMachinery;
 import kmu.maplayers.base.machinery.SectorMapMachineryIndex;
 import kmu.maplayers.base.refresh.MapLayerCommonRefreshSignal;
@@ -26,8 +28,9 @@ import java.util.Set;
  * Console command to initialize all star systems in the sector for Bad Apple playback:
  * 1. Spawns physical space station entities and size-3 colony markets in uninhabited star systems.
  * 2. Assigns all colonies/markets across the sector to Hegemony (or a chosen target faction).
- * 3. Excludes outlier systems (e.g. Limbo) so hyperspace coordinate bounds remain clean.
- * 4. Refreshes KMU political map layers.
+ * 3. Marks all systems, entities, jump points, and markets as fully explored/surveyed (lifts Fog of War).
+ * 4. Excludes outlier systems (e.g. Limbo) so hyperspace coordinate bounds remain clean.
+ * 5. Refreshes KMU political map layers.
  * <p>
  * Syntax:
  * badapple_init [optionalFactionId]
@@ -71,7 +74,7 @@ public class BadAppleInitCommand implements BaseCommand {
         Console.showMessage("=== Initializing Sector for Bad Apple (Target Faction: " + targetFactionId + ") ===");
 
         // =========================================================================
-        // --- 2. System Traversal, Station/Market Spawning & Faction Assignment ---
+        // --- 2. System Traversal, Exploration & Station/Market Spawning ---
         // =========================================================================
         List<StarSystemAPI> allStarSystems = sector.getStarSystems();
         if (allStarSystems == null || allStarSystems.isEmpty()) {
@@ -95,6 +98,18 @@ public class BadAppleInitCommand implements BaseCommand {
                 continue;
             }
 
+            // Lift fog of war for this star system
+            system.setEnteredByPlayer(true);
+
+            // Make all entities in the system discovered
+            if (system.getAllEntities() != null) {
+                for (SectorEntityToken entity : system.getAllEntities()) {
+                    if (entity != null) {
+                        entity.setDiscoverable(false);
+                    }
+                }
+            }
+
             List<MarketAPI> existingMarkets = sector.getEconomy().getMarkets(system);
 
             if (existingMarkets != null && !existingMarkets.isEmpty()) {
@@ -105,16 +120,25 @@ public class BadAppleInitCommand implements BaseCommand {
                     }
 
                     market.setFactionId(targetFactionId);
+                    market.setSurveyLevel(MarketAPI.SurveyLevel.FULL);
+                    market.setHidden(false);
+                    market.setPlanetConditionMarketOnly(false);
+                    try {
+                        Misc.setFullySurveyed(market, null, false);
+                    } catch (Throwable ignored) {
+                    }
 
                     SectorEntityToken primaryEntity = market.getPrimaryEntity();
                     if (primaryEntity != null) {
                         primaryEntity.setFaction(targetFactionId);
+                        primaryEntity.setDiscoverable(false);
                     }
 
                     if (market.getConnectedEntities() != null) {
                         for (SectorEntityToken connected : market.getConnectedEntities()) {
                             if (connected != null) {
                                 connected.setFaction(targetFactionId);
+                                connected.setDiscoverable(false);
                             }
                         }
                     }
@@ -145,10 +169,14 @@ public class BadAppleInitCommand implements BaseCommand {
                 newMarket.setPlanetConditionMarketOnly(false);
                 newMarket.setHidden(false);
                 newMarket.addCondition(Conditions.POPULATION_3);
-//                newMarket.addCondition(Conditions.SPACEPORT);
+                try {
+                    Misc.setFullySurveyed(newMarket, null, false);
+                } catch (Throwable ignored) {
+                }
 
                 station.setMarket(newMarket);
                 station.setFaction(targetFactionId);
+                station.setDiscoverable(false);
 
                 sector.getEconomy().addMarket(newMarket, false);
 
@@ -166,7 +194,19 @@ public class BadAppleInitCommand implements BaseCommand {
         }
 
         // =========================================================================
-        // --- 3. Global Economy Faction Alignment Sweep ---
+        // --- 3. Hyperspace Jump Point & System Discovery Sweep ---
+        // =========================================================================
+        if (sector.getHyperspace() != null && sector.getHyperspace().getAllEntities() != null) {
+            for (SectorEntityToken token : sector.getHyperspace().getAllEntities()) {
+                if (token instanceof JumpPointAPI) {
+                    token.setDiscoverable(false);
+                    token.removeTag("star_hidden_on_map");
+                }
+            }
+        }
+
+        // =========================================================================
+        // --- 4. Global Economy Faction Alignment Sweep ---
         // =========================================================================
         // Ensure any remaining non-exempt standalone markets across the sector are aligned
         for (MarketAPI market : sector.getEconomy().getMarketsCopy()) {
@@ -174,14 +214,25 @@ public class BadAppleInitCommand implements BaseCommand {
                 continue;
             }
 
+            market.setSurveyLevel(MarketAPI.SurveyLevel.FULL);
+            market.setHidden(false);
+            try {
+                Misc.setFullySurveyed(market, null, false);
+            } catch (Throwable ignored) {
+            }
+
             if (!targetFactionId.equals(market.getFactionId())) {
                 market.setFactionId(targetFactionId);
                 if (market.getPrimaryEntity() != null) {
                     market.getPrimaryEntity().setFaction(targetFactionId);
+                    market.getPrimaryEntity().setDiscoverable(false);
                 }
                 if (market.getConnectedEntities() != null) {
                     for (SectorEntityToken entity : market.getConnectedEntities()) {
-                        if (entity != null) entity.setFaction(targetFactionId);
+                        if (entity != null) {
+                            entity.setFaction(targetFactionId);
+                            entity.setDiscoverable(false);
+                        }
                     }
                 }
                 try {
@@ -194,7 +245,7 @@ public class BadAppleInitCommand implements BaseCommand {
         }
 
         // =========================================================================
-        // --- 4. KMU Political Map Layer Cache Invalidation ---
+        // --- 5. KMU Political Map Layer Cache Invalidation ---
         // =========================================================================
         try {
             SectorMapMachinery machinery = SectorMapMachineryIndex.resolveMachineryFor(sector);
@@ -208,12 +259,13 @@ public class BadAppleInitCommand implements BaseCommand {
         }
 
         // =========================================================================
-        // --- 5. Summary & Diagnostics ---
+        // --- 6. Summary & Diagnostics ---
         // =========================================================================
         Console.showMessage(String.format("Initialization complete: %d systems initialized across the sector.", processedSystemNames.size()));
         Console.showMessage(String.format("  - Existing markets updated: %d", existingMarketsUpdated));
         Console.showMessage(String.format("  - Space stations spawned:   %d", newStationsSpawned));
         Console.showMessage(String.format("  - Outlier systems exempt:   %d", exemptSystemsSkipped));
+        Console.showMessage("  - Exploration / Fog of War: All systems and markets marked discovered & surveyed.");
         Console.showMessage("  - Target faction:           " + targetFactionId);
         Console.showMessage("KMU political spheres refreshed. Open campaign map (TAB) to inspect.");
 
@@ -234,6 +286,7 @@ public class BadAppleInitCommand implements BaseCommand {
         SectorEntityToken existing = system.getEntityById(stationId);
         if (existing != null) {
             existing.setFaction(targetFactionId);
+            existing.setDiscoverable(false);
             return existing;
         }
 
@@ -244,6 +297,7 @@ public class BadAppleInitCommand implements BaseCommand {
                 STATION_ENTITY_TYPE,
                 targetFactionId
         );
+        station.setDiscoverable(false);
 
         // Find best celestial body to orbit
         PlanetAPI orbitPlanet = null;
