@@ -22,7 +22,7 @@ import santomon.BadApple.playback.BadApplePlaybackScript;
  */
 public class BadApplePlayCommand implements BaseCommand {
 
-    public static final float DEFAULT_FRAME_DELAY_SECONDS = 1f / 5;
+    public static final float DEFAULT_FRAME_DELAY_SECONDS = 1f / 6;
 
     @Override
     public CommandResult runCommand(String args, CommandContext context) {
