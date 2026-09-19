@@ -16,8 +16,8 @@ import santomon.BadApple.sampling.SamplingAlgorithms;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.FilenameFilter;
+import java.io.BufferedInputStream;
+import java.io.InputStream;
 import java.util.*;
 
 /**
@@ -148,64 +148,32 @@ public class BadApplePreprocessCommand implements BaseCommand {
         Console.showMessage(String.format("Hyperspace Bounding Box: X:[%.1f to %.1f], Y:[%.1f to %.1f]", minX, maxX, minY, maxY));
 
         // =========================================================================
-        // --- 3. Frame Image Directory Discovery ---
+        // --- 3. Frame Image Loading & Resolution Discovery ---
         // =========================================================================
-        File framesDir = null;
-        try {
-            String modPath = Global.getSettings().getModManager().getModSpec("starsector-badapple").getPath();
-            framesDir = new File(modPath, "graphics/badapple/frames");
-        } catch (Exception ignored) {}
+        String frameFormat = "graphics/badapple/frames/output_%04d.jpg";
+        int frameCountToProcess = 0;
+        int frameWidth = -1;
+        int frameHeight = -1;
 
-        if (framesDir == null || !framesDir.exists() || !framesDir.isDirectory()) {
-            framesDir = new File("mods/starsector-badapple/graphics/badapple/frames");
-        }
-        if (!framesDir.exists() || !framesDir.isDirectory()) {
-            framesDir = new File("graphics/badapple/frames");
-        }
-
-        if (!framesDir.exists() || !framesDir.isDirectory()) {
-            Console.showMessage("Error: Bad Apple frames directory not found at graphics/badapple/frames");
-            return CommandResult.ERROR;
-        }
-
-        File[] frameFiles = framesDir.listFiles(new FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String name) {
-                String lower = name.toLowerCase();
-                return lower.startsWith("output_") && (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png"));
-            }
-        });
-
-        if (frameFiles == null || frameFiles.length == 0) {
-            Console.showMessage("Error: No frame images found in " + framesDir.getAbsolutePath());
-            return CommandResult.ERROR;
-        }
-
-        Arrays.sort(frameFiles, new Comparator<File>() {
-            @Override
-            public int compare(File o1, File o2) {
-                return o1.getName().compareTo(o2.getName());
-            }
-        });
-
-        int frameCountToProcess = Math.min(frameFiles.length, maxFrames);
-        Console.showMessage("Found " + frameFiles.length + " total frames. Processing " + frameCountToProcess + " frames...");
-
-        // Load first frame to determine target width and height
-        BufferedImage firstFrame;
-        try {
-            firstFrame = ImageIO.read(frameFiles[0]);
-            if (firstFrame == null) {
-                Console.showMessage("Error: Could not decode first frame image: " + frameFiles[0].getName());
-                return CommandResult.ERROR;
+        // Verify first frame and determine frame resolution
+        try (InputStream is = Global.getSettings().openStream(String.format(frameFormat, 1))) {
+            if (is != null) {
+                BufferedImage firstFrame = ImageIO.read(new BufferedInputStream(is));
+                if (firstFrame != null) {
+                    frameWidth = firstFrame.getWidth();
+                    frameHeight = firstFrame.getHeight();
+                }
             }
         } catch (Exception e) {
-            Console.showMessage("Error reading first frame: " + e.getMessage());
+            Console.showMessage("Warning: Could not read first frame via primary path: " + e.getMessage());
+        }
+
+        // Fallback check if frame format uses unpadded or alternative extension
+        if (frameWidth <= 0 || frameHeight <= 0) {
+            Console.showMessage("Error: Bad Apple frame images not accessible at graphics/badapple/frames/output_0001.jpg");
             return CommandResult.ERROR;
         }
 
-        int frameWidth = firstFrame.getWidth();
-        int frameHeight = firstFrame.getHeight();
         Console.showMessage("Frame resolution: " + frameWidth + " x " + frameHeight);
 
         // =========================================================================
@@ -250,27 +218,37 @@ public class BadApplePreprocessCommand implements BaseCommand {
         }
 
         int totalChangeCount = 0;
+        int frameIndex = 0;
+        int consecutiveFailures = 0;
 
-        for (int i = 0; i < frameCountToProcess; i++) {
-            File frameFile = frameFiles[i];
-            BufferedImage image;
-            try {
-                image = ImageIO.read(frameFile);
-                if (image == null) {
-                    continue;
+        Console.showMessage("Sampling frames sequentially...");
+
+        while (frameIndex < maxFrames && consecutiveFailures < 5) {
+            int frameNum = frameIndex + 1;
+            String framePath = String.format(frameFormat, frameNum);
+
+            BufferedImage image = null;
+            try (InputStream is = Global.getSettings().openStream(framePath)) {
+                if (is != null) {
+                    image = ImageIO.read(new BufferedInputStream(is));
                 }
-            } catch (Exception e) {
-                Console.showMessage("Warning: Failed to read frame " + frameFile.getName() + ": " + e.getMessage());
+            } catch (Exception ignored) {}
+
+            if (image == null) {
+                consecutiveFailures++;
+                frameIndex++;
                 continue;
             }
 
-            BadAppleFrameData frameData = new BadAppleFrameData(i, frameFile.getName());
+            consecutiveFailures = 0;
+            String frameFileName = String.format("output_%04d.jpg", frameNum);
+            BadAppleFrameData frameData = new BadAppleFrameData(frameIndex, frameFileName);
 
             for (BadAppleMappedSystem ms : mappedSystems) {
                 String targetFaction = samplingAlgorithm.determineFaction(image, ms, mappedSystems, brightnessThreshold);
                 String previousFaction = lastKnownFactions.get(ms.primaryMarket.getId());
 
-                if (i == 0 || !targetFaction.equals(previousFaction)) {
+                if (frameIndex == 0 || !targetFaction.equals(previousFaction)) {
                     frameData.changes.add(new BadAppleMarketChange(
                             ms.primaryMarket.getId(),
                             ms.primaryMarket.getName(),
@@ -283,6 +261,8 @@ public class BadApplePreprocessCommand implements BaseCommand {
             }
 
             frameDeltas.add(frameData);
+            frameCountToProcess++;
+            frameIndex++;
         }
 
         // =========================================================================
