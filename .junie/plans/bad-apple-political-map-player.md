@@ -166,7 +166,7 @@ Spawn physical space station custom entities (`station_lowtech1`) in systems lac
 - Attach the newly spawned size-3 markets and condition specs directly to the station entities.
 - Recompile project classes and update mod JAR.
 
-### * Step 7: Implement high-density star system procedural generator
+### ✓ Step 7: Implement high-density star system procedural generator
 Implement the procedural generator to generate a uniform, dense field of star systems across hyperspace during New Game creation without creating any markets or economy entities.
 
 - Implement `BadApplePoissonSampler` using 2D Poisson Disk Sampling to generate candidate hyperspace coordinates $(X, Y)$ with calibrated minimum spacing and core exclusion zone checks.
