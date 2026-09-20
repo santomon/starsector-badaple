@@ -81,14 +81,8 @@ badapple_prep
 ### Step 4: Play Bad Apple (`badapple_play`)
 Open the Campaign Map screen (`Tab`), zoom out to view the sector, and run:
 ```text
-badapple_play 0.2
+badapple_play 
 ```
-* **Syntax**: `badapple_play [frameDelaySeconds] [startFrame]`
-* `badapple_play 0.2` plays each frame with a 200ms delay (5 FPS).
-* `badapple_play 0.1 200` jumps straight to frame 200 at 100ms per frame (10 FPS).
-* `badapple_play pause` / `badapple_play resume` to pause/resume playback.
-* `badapple_play stop` to stop playback.
-
 ---
 
 ## Additional Commands
