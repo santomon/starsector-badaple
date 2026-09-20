@@ -2,6 +2,8 @@
 
 A mod for [Starsector](https://fractalsoftworks.com/) that renders the **Bad Apple!!** shadow art music video directly onto the campaign sector map using political spheres of influence and territorial merging powered by **Klark Morrigan's Utilities (KMU)**.
 
+project has been mostly vibecoded and implemented with junie + gemini flash and some planning from me. proceed with caution.
+
 ---
 
 ## ⚠️ Important Warning
