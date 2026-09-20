@@ -17,7 +17,7 @@ A mod for [Starsector](https://fractalsoftworks.com/) that renders the **Bad App
 ## Requirements & Dependencies
 
 Ensure the following mods are installed and enabled in the Starsector launcher:
-1. **[Klark Morrigan's Utilities (KMU)](https://fractalsoftworks.com/)** (Required for campaign political map & sphere of influence rendering).
+1. **[Klark Morrigan's Utilities (KMU)](https://fractalsoftworks.com/forum/index.php?topic=36029.0)** (Required for campaign political map & sphere of influence rendering).
 2. **[LazyWizard's Console Commands](https://fractalsoftworks.com/forum/index.php?topic=4106.0)** (Required to run preprocessing and playback commands).
 3. **Bad Apple Frame Pack** (See installation instructions below).
 
